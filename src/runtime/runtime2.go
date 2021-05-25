@@ -431,6 +431,7 @@ type g struct {
 	// 3. By debugCallWrap to pass parameters to a new goroutine because allocating a
 	//    closure in the runtime is forbidden.
 	param        unsafe.Pointer
+	wakeStatus   uint32
 	atomicstatus uint32
 	stackLock    uint32 // sigprof/scang lock; TODO: fold in to atomicstatus
 	goid         int64
@@ -754,7 +755,8 @@ type schedt struct {
 	lastpoll  uint64 // time of last network poll, 0 if currently polling
 	pollUntil uint64 // time to which current poll is sleeping
 
-	lock mutex
+	lock     mutex
+	wakeLock mutex
 
 	// When increasing nmidle, nmidlelocked, nmsys, or nmfreed, be
 	// sure to call checkdead().

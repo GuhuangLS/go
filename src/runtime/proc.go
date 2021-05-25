@@ -3284,6 +3284,60 @@ func injectglist(glist *gList) {
 	}
 }
 
+const (
+	gStatusNoWake  = 0
+	gStatusWaked   = 1
+	gStatusBlocked = 2
+)
+
+func GetG() uintptr {
+	gp := getg()
+	return uintptr(unsafe.Pointer(gp))
+}
+
+func ClearGStatus() {
+	lock(&sched.wakeLock)
+	gp := getg()
+	gp.wakeStatus = gStatusNoWake
+	unlock(&sched.wakeLock)
+}
+
+func WakeG(g uintptr) {
+	gp := guintptr(g).ptr()
+	if gp == nil {
+		return
+	}
+	lock(&sched.wakeLock)
+	if gp.wakeStatus != gStatusBlocked {
+		gp.wakeStatus = gStatusWaked
+		unlock(&sched.wakeLock)
+		return
+	}
+	gp.wakeStatus = gStatusNoWake
+	unlock(&sched.wakeLock)
+	goready(gp, 1)
+}
+
+func gosched_block(gp *g) {
+	dropg()
+	lock(&sched.wakeLock)
+	if gp.wakeStatus == gStatusWaked {
+		gp.wakeStatus = gStatusNoWake
+		unlock(&sched.wakeLock)
+		casgstatus(gp, _Grunning, _Grunnable)
+		execute(gp, false) // Schedule it back, never returns.
+		return
+	}
+	gp.wakeStatus = gStatusBlocked
+	casgstatus(gp, _Grunning, _Gwaiting)
+	unlock(&sched.wakeLock)
+	schedule()
+}
+
+func BlockG() {
+	mcall(gosched_block)
+}
+
 // One round of scheduler: find a runnable goroutine and execute it.
 // Never returns.
 func schedule() {
